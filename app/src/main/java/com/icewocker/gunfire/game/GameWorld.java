@@ -89,8 +89,7 @@ public final class GameWorld {
     private float spreadHeat;
     private int shotsFired;
     private int shotsHit;
-    /** 已游玩的毫秒数。用 float 累加、读秒时再取整——每帧先取整会把 0.67ms 丢掉，60 帧只剩 960ms。 */
-    private float elapsedMillis;
+    private long elapsedMillis;
     private boolean gameOver;
     private int wave = 1;
     private int streak;
@@ -363,9 +362,8 @@ public final class GameWorld {
             return;
         }
         dt = Math.min(dt, 0.05f);
-        // 原写法 (long)(dt*1000)/1000 每帧就把 0.67ms 截掉，60 帧只剩 960ms → 秒数恒为 0。
-        // 先按浮点累加毫秒，读秒时再取整，误差不累积。
-        elapsedMillis += dt * 1000f;
+        // 原写法 (long)(dt*1000)/1000 对每帧 dt≈0.0167 恒等于 0，计时器从来没走过。
+        elapsedMillis += (long) (dt * 1000f);
 
         muzzleFlash = Math.max(0f, muzzleFlash - dt * 8f);
         spreadHeat = Math.max(0f, spreadHeat - dt * 0.7f);
@@ -493,7 +491,7 @@ public final class GameWorld {
     }
 
     public long elapsedSeconds() {
-        return (long) (elapsedMillis / 1000f);
+        return elapsedMillis / 1000;
     }
 
     public int wave() {
@@ -533,7 +531,7 @@ public final class GameWorld {
         reloadTimer = 0f;
         shotsFired = 0;
         shotsHit = 0;
-        elapsedMillis = 0f;
+        elapsedMillis = 0L;
         wave = 1;
         streak = 0;
         bestStreak = 0;

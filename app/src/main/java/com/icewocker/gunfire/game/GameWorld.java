@@ -418,7 +418,6 @@ public final class GameWorld {
 
     private void respawnWave() {
         wave++;
-        killsThisWave = 0;
         for (Target t : targets) {
             t.alive = true;
             // 每波血量 +8，第 6 波起要 4 枪才倒。
@@ -537,7 +536,6 @@ public final class GameWorld {
         streak = 0;
         bestStreak = 0;
         streakAge = 0f;
-        killsThisWave = 0;
         muzzleFlash = 0f;
         spreadHeat = 0f;
         camera.recoil = 0f;

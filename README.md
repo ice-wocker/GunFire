@@ -1,5 +1,9 @@
 # GunFire
 
+[![Release](https://img.shields.io/github/v/release/ice-wocker/GunFire?label=下载%20APK&color=2ea44f)](https://github.com/ice-wocker/GunFire/releases/latest)
+[![Android CI](https://github.com/ice-wocker/GunFire/actions/workflows/android.yml/badge.svg)](https://github.com/ice-wocker/GunFire/actions/workflows/android.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 一个纯粹的安卓枪战游戏。**623 KB**，**零第三方依赖**，**零权限**。
 
 打开就能玩，不需要账号、不需要联网、不申请任何权限——不是「承诺不上传」，是技术上没有权限可用。
@@ -17,11 +21,17 @@
 
 ## 下载
 
-从 [Releases](https://github.com/ice-wocker/GunFire/releases) 下载 `app-release.apk`。
+[**⬇️ 下载 app-release.apk（623 KB）**](https://github.com/ice-wocker/GunFire/releases/latest/download/app-release.apk)
+
+直链固定指向最新一版，不用在 Releases 页面里翻。也可以去
+[Releases](https://github.com/ice-wocker/GunFire/releases) 挑具体版本。
 
 - 最低 Android 7.0（API 24），目标 API 35
 - 支持任意 ABI（纯 Java + OpenGL ES 2.0，无 native 代码）
 - 用仓库内的演示 keystore 签名，可直接安装
+
+下载后如果系统提示「未知来源」，需要在设置里放行一次——APK 不是从应用商店来的，
+这是安卓的默认行为，不是这个包有什么问题。
 
 也可以自己构建：
 
@@ -69,6 +79,19 @@ app/src/main/java/com/icewocker/gunfire/
 这不是洁癖，是为了让游戏规则能在普通 JVM 上跑测试。`app/src/test/` 下的 27 个用例覆盖了射线检测、射击/换弹、移动碰撞、视角钳制、矩阵运算——它们不需要模拟器，毫秒级跑完。
 
 渲染层每帧从 `GameWorld` 读只读快照，输入层往里写事件，两者之间没有锁。
+
+## 发布
+
+打 tag 即发布，CI 会自动构建两条 APK 并挂到 Release 上：
+
+```bash
+git tag -a v1.0.1 -m "GunFire v1.0.1"
+git push origin v1.0.1
+```
+
+流水线做的事：单测 → Lint → 构建 debug/release → `apksigner verify` 验签 → 上传产物 → 发 Release。
+仓库的 `Actions → General` 里 **Workflow permissions 必须是 Read and write**，
+否则发 Release 那一步会以 `Resource not accessible by integration` 失败——构建是好的，只是没权限挂附件。
 
 ## 测试
 

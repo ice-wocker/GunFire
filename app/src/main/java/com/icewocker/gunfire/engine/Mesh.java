@@ -61,6 +61,15 @@ public final class Mesh {
         return from(v);
     }
 
+    /** 贴地四边形：XZ 平面上 2x2，法线朝上。用于假阴影。 */
+    public static Mesh unitQuad() {
+        float[] v = {
+                -1, 0, -1, 0, 1, 0,  1, 0, -1, 0, 1, 0,  1, 0, 1, 0, 1, 0,
+                -1, 0, -1, 0, 1, 0,  1, 0, 1, 0, 1, 0,  -1, 0, 1, 0, 1, 0,
+        };
+        return from(v);
+    }
+
     /** 圆柱（用于枪管、立柱）。沿 Y 轴，高 2，半径 1。segments 越大越圆。 */
     public static Mesh cylinder(int segments) {
         float[] tmp = new float[segments * 6 * 2 * 6];
@@ -79,11 +88,55 @@ public final class Mesh {
         return from(java.util.Arrays.copyOf(tmp, p));
     }
 
+    /** 半径 1 的球，用于天空穹顶。法线朝内——从里面看的东西。 */
+    public static Mesh sphere(int segments, int rings) {
+        int quads = segments * rings;
+        float[] tmp = new float[quads * 6 * 6];
+        int p = 0;
+        for (int r = 0; r < rings; r++) {
+            float t0 = (float) (r * Math.PI / rings);
+            float t1 = (float) ((r + 1) * Math.PI / rings);
+            for (int s = 0; s < segments; s++) {
+                float u0 = (float) (s * 2 * Math.PI / segments);
+                float u1 = (float) ((s + 1) * 2 * Math.PI / segments);
+                float x00 = (float) (Math.sin(t0) * Math.cos(u0));
+                float y0 = (float) Math.cos(t0);
+                float z00 = (float) (Math.sin(t0) * Math.sin(u0));
+                float x01 = (float) (Math.sin(t0) * Math.cos(u1));
+                float z01 = (float) (Math.sin(t0) * Math.sin(u1));
+                float x10 = (float) (Math.sin(t1) * Math.cos(u0));
+                float y1 = (float) Math.cos(t1);
+                float z10 = (float) (Math.sin(t1) * Math.sin(u0));
+                float x11 = (float) (Math.sin(t1) * Math.cos(u1));
+                float z11 = (float) (Math.sin(t1) * Math.sin(u1));
+                // 顶点顺序反过来 = 法线翻转，从内部可见
+                p = quadIn(tmp, p, x00, y0, z00, x10, y1, z10, x11, y1, z11, x01, y0, z01);
+            }
+        }
+        return from(java.util.Arrays.copyOf(tmp, p));
+    }
+
     private static int tri(float[] out, int p, float ax, float ay, float az,
                            float bx, float by, float bz, float cx, float cy, float cz) {
         Vec3 n = Vec3.of(bx - ax, by - ay, bz - az)
                 .cross(Vec3.of(cx - ax, cy - ay, cz - az))
                 .normalize();
+        out[p++] = ax; out[p++] = ay; out[p++] = az;
+        out[p++] = n.x; out[p++] = n.y; out[p++] = n.z;
+        out[p++] = bx; out[p++] = by; out[p++] = bz;
+        out[p++] = n.x; out[p++] = n.y; out[p++] = n.z;
+        out[p++] = cx; out[p++] = cy; out[p++] = cz;
+        out[p++] = n.x; out[p++] = n.y; out[p++] = n.z;
+        return p;
+    }
+
+    /** 与 tri 相同，但法线取反（球体内部法线朝内）。 */
+    private static int triIn(float[] out, int p, float ax, float ay, float az,
+                             float bx, float by, float bz, float cx, float cy, float cz) {
+        Vec3 n = Vec3.of(bx - ax, by - ay, bz - az)
+                .cross(Vec3.of(cx - ax, cy - ay, cz - az))
+                .normalize()
+                .scale(-1f);
         out[p++] = ax; out[p++] = ay; out[p++] = az;
         out[p++] = n.x; out[p++] = n.y; out[p++] = n.z;
         out[p++] = bx; out[p++] = by; out[p++] = bz;
@@ -102,14 +155,40 @@ public final class Mesh {
         return p;
     }
 
+    private static int quadIn(float[] out, int p,
+                              float ax, float ay, float az, float bx, float by, float bz,
+                              float cx, float cy, float cz, float dx, float dy, float dz) {
+        p = triIn(out, p, ax, ay, az, bx, by, bz, cx, cy, cz);
+        p = triIn(out, p, ax, ay, az, cx, cy, cz, dx, dy, dz);
+        return p;
+    }
+
     public void draw(int posAttrib, int normalAttrib) {
+        bind(posAttrib, normalAttrib);
+        GLES20.glDrawArrays(GLES20.GL_TRIANGLES, 0, vertexCount);
+        unbind(posAttrib, normalAttrib);
+    }
+
+    /** 只关心位置的绘制（天空球、阴影），省掉一次属性上传。 */
+    public void drawSky(int posAttrib) {
+        GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, vbo);
+        GLES20.glEnableVertexAttribArray(posAttrib);
+        GLES20.glVertexAttribPointer(posAttrib, 3, GLES20.GL_FLOAT, false, FLOATS_PER_VERTEX * 4, 0);
+        GLES20.glDrawArrays(GLES20.GL_TRIANGLES, 0, vertexCount);
+        GLES20.glDisableVertexAttribArray(posAttrib);
+        GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0);
+    }
+
+    private void bind(int posAttrib, int normalAttrib) {
         GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, vbo);
         GLES20.glEnableVertexAttribArray(posAttrib);
         GLES20.glVertexAttribPointer(posAttrib, 3, GLES20.GL_FLOAT, false, FLOATS_PER_VERTEX * 4, 0);
         GLES20.glEnableVertexAttribArray(normalAttrib);
         GLES20.glVertexAttribPointer(normalAttrib, 3, GLES20.GL_FLOAT, false,
                 FLOATS_PER_VERTEX * 4, 3 * 4);
-        GLES20.glDrawArrays(GLES20.GL_TRIANGLES, 0, vertexCount);
+    }
+
+    private void unbind(int posAttrib, int normalAttrib) {
         GLES20.glDisableVertexAttribArray(posAttrib);
         GLES20.glDisableVertexAttribArray(normalAttrib);
         GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0);

@@ -1,7 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- 单机游戏，不需要任何权限：无网络、无存储、无定位。 -->
+    <!--
+        单机游戏，依旧不需要任何权限：无网络、无存储、无定位。
+        音效用 AudioTrack 在内存里合成 PCM，不读任何音频文件，
+        所以连 READ_MEDIA 都不需要申请。
+    -->
     <uses-feature android:glEsVersion="0x00020000" android:required="true" />
 
     <application

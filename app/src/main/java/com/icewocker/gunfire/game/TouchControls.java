@@ -36,6 +36,10 @@ public final class TouchControls implements View.OnTouchListener {
 
     private float deadZonePx = 12f;
     private float fireStartY;
+    private float fireCooldown;
+
+    /** 射速：约 10 发/秒，和 30 发弹匣配起来一梭子 3 秒。 */
+    private static final float FIRE_INTERVAL = 0.1f;
 
     public TouchControls(Context context, GameWorld world) {
         this.world = world;
@@ -59,7 +63,11 @@ public final class TouchControls implements View.OnTouchListener {
                 if (isFireZone(v, x, y)) {
                     firePointer = id;
                     fireStartY = y;
-                    world.fire();
+                    if (world.gameOver()) {
+                        world.restart();
+                    } else {
+                        world.fire();
+                    }
                 } else if (x < v.getWidth() / 2f && movePointer < 0) {
                     movePointer = id;
                     moveOriginX = x;
@@ -120,6 +128,7 @@ public final class TouchControls implements View.OnTouchListener {
         }
         if (id == firePointer) {
             firePointer = -1;
+            fireCooldown = 0f;
         }
     }
 
@@ -128,8 +137,9 @@ public final class TouchControls implements View.OnTouchListener {
         return x > v.getWidth() - 150 * density && y > v.getHeight() - 150 * density;
     }
 
-    /** 每帧读一次，把摇杆状态喂给世界。 */
+    /** 每帧读一次：先处理按住连射，再把摇杆状态喂给世界。 */
     public void applyMovement(float dt) {
+        tickAutoFire(dt);
         if (movePointer < 0) {
             return;
         }
@@ -140,6 +150,27 @@ public final class TouchControls implements View.OnTouchListener {
         float forward = GameWorld.clamp(-ay / max, -1f, 1f);
         float strafe = GameWorld.clamp(ax / max, -1f, 1f);
         world.move(forward, strafe, dt);
+    }
+
+    /**
+     * 按住开火键持续射击。
+     *
+     * 原来每次 ACTION_DOWN 只 fire 一次，玩家想连射就得疯狂戳屏幕——
+     * 手感上的"卡顿"多半来自这里。改成按住后按武器射速匀速出膛。
+     */
+    private void tickAutoFire(float dt) {
+        if (firePointer < 0 || world.gameOver()) {
+            return;
+        }
+        fireCooldown -= dt;
+        if (fireCooldown <= 0f) {
+            if (world.fire()) {
+                fireCooldown = FIRE_INTERVAL;
+            } else {
+                // 换弹或空仓时不要空转：等装填完再继续
+                fireCooldown = 0.1f;
+            }
+        }
     }
 
     private static float clampDelta(float v, float max) {

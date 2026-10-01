@@ -65,10 +65,13 @@ public final class HudView extends View {
             return;
         }
 
-        // 左上：分数 / 命中率
+        // 左上：分数 / 命中率 / 存活时间
         canvas.drawText("得分 " + world.score(), dp(16), dp(28), textPaint);
-        canvas.drawText(String.format(java.util.Locale.US, "命中率 %.0f%% · 击杀 %d",
-                world.accuracy() * 100f, world.shotsHit()), dp(16), dp(48), textPaint);
+        canvas.drawText(String.format(java.util.Locale.US, "命中率 %.0f%%", world.accuracy() * 100f),
+                dp(16), dp(48), textPaint);
+        canvas.drawText(String.format(java.util.Locale.US, "第 %d 波 · %d:%02d",
+                world.wave(), world.elapsedSeconds() / 60, world.elapsedSeconds() % 60),
+                dp(16), dp(68), textPaint);
 
         // 顶部中央：剩余目标 + FPS
         textPaint.setTextAlign(Paint.Align.CENTER);
@@ -76,8 +79,16 @@ public final class HudView extends View {
         canvas.drawText(String.format(java.util.Locale.US, "%.0f FPS", fps), cx, dp(48), textPaint);
         textPaint.setTextAlign(Paint.Align.LEFT);
 
+        // 连杀：只有真的连起来了才显示，否则屏幕会更乱
+        drawStreak(canvas, cx);
+
         // 右下：弹药
         drawAmmo(canvas, w, h);
+
+        if (world.gameOver()) {
+            drawGameOver(canvas, w, h);
+            return;
+        }
 
         // 活跃射击时的散布指示
         float heat = world.muzzleFlash();
@@ -87,6 +98,44 @@ public final class HudView extends View {
             paint.setColor(Color.argb((int) (heat * 200), 255, 170, 60));
             canvas.drawCircle(cx, cy, dp(28) + heat * dp(10), paint);
         }
+    }
+
+    /** 连杀提示。窗口剩余时间用一条会缩短的横条表示——玩家能看见自己还剩多久。 */
+    private void drawStreak(Canvas canvas, float cx) {
+        int streak = world.streak();
+        if (streak < 2) {
+            return;
+        }
+        float remain = world.streakRemaining();
+        textPaint.setTextAlign(Paint.Align.CENTER);
+        textPaint.setTextSize(dp(18));
+        textPaint.setColor(Color.parseColor("#FFB33C"));
+        canvas.drawText("×" + streak + " 连杀", cx, dp(84), textPaint);
+        float barW = dp(96) * remain;
+        paint.setColor(Color.parseColor("#FFB33C"));
+        canvas.drawRoundRect(cx - barW / 2f, dp(90), cx + barW / 2f, dp(94), dp(2), dp(2), paint);
+        textPaint.setTextAlign(Paint.Align.LEFT);
+    }
+
+    /** 一局结束的结算面板。原版打完子弹后画面什么都没变，这是个死局。 */
+    private void drawGameOver(Canvas canvas, float w, float h) {
+        paint.setColor(Color.argb(190, 0, 0, 0));
+        canvas.drawRect(0, 0, w, h, paint);
+        float cx = w / 2f;
+        textPaint.setTextAlign(Paint.Align.CENTER);
+        textPaint.setColor(Color.parseColor("#FF6B5E"));
+        textPaint.setTextSize(dp(26));
+        canvas.drawText("弹药耗尽", cx, h / 2f - dp(52), textPaint);
+        textPaint.setColor(Color.parseColor("#E6E8EF"));
+        textPaint.setTextSize(dp(15));
+        canvas.drawText(String.format(java.util.Locale.US, "得分 %d · 最高连杀 %d",
+                world.score(), world.bestStreak()), cx, h / 2f - dp(14), textPaint);
+        canvas.drawText(String.format(java.util.Locale.US, "坚持 %d 波 · 命中率 %.0f%%",
+                world.wave(), world.accuracy() * 100f), cx, h / 2f + dp(10), textPaint);
+        textPaint.setColor(Color.parseColor("#8C93A6"));
+        textPaint.setTextSize(dp(13));
+        canvas.drawText("点右下角重新开始", cx, h / 2f + dp(46), textPaint);
+        textPaint.setTextAlign(Paint.Align.LEFT);
     }
 
     private void drawCrosshair(Canvas canvas, float cx, float cy) {

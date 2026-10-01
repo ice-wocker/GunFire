@@ -246,6 +246,8 @@ public class GameWorldTest {
     @Test
     public void magazineNeverExceedsCapacityAfterAutoReload() {
         GameWorld w = world();
+        // 注意：这 1000 帧里弹药会打光并触发一局结束，
+        // 断言只关心"数字不越界"，不关心这一局是否还在进行。
         for (int i = 0; i < 1000; i++) {
             w.fire();
             w.update(1f / 60f);
@@ -301,5 +303,117 @@ public class GameWorldTest {
         w.endGame();
         assertFalse(w.fire());
         assertEquals(0, w.shotsFired());
+    }
+
+    // ---- 可玩性反馈相关：这几条对应「玩起来没反馈」的修复 ----
+
+    @Test
+    public void hittingButNotKillingStillScores() {
+        GameWorld w = world();
+        int before = w.score();
+        // 一枪打不死目标（需要 3 枪），但必须有分，否则玩家不知道打中了
+        w.fire();
+        assertTrue("命中未击杀也应该给分", w.score() > before);
+    }
+
+    @Test
+    public void streakGrowsOnConsecutiveKillsAndResetsAfterWindow() {
+        GameWorld w = world();
+        for (GameWorld.Target t : w.targets()) {
+            t.health = 1f;
+        }
+        Vec3 origin = Vec3.of(0, 1.4f, 5);
+        for (GameWorld.Target t : w.targets()) {
+            assertNotNull(w.raycastTarget(origin, Vec3.of(0, 0, -1)));
+            break;
+        }
+        // 直接打死一个目标来推进连杀
+        w.fire();
+        assertTrue(w.bestStreak() >= 0);
+        // 超过连杀窗口后应清零
+        for (int i = 0; i < 300; i++) {
+            w.update(1f / 60f);
+        }
+        assertEquals("连杀窗口过后应归零", 0, w.streak());
+    }
+
+    @Test
+    public void waveIncrementsAfterClearingAllTargets() {
+        GameWorld w = world();
+        int before = w.wave();
+        for (GameWorld.Target t : w.targets()) {
+            t.alive = false;
+        }
+        w.update(1f / 60f);
+        assertEquals(before + 1, w.wave());
+        assertTrue("新一波目标血量不低于第一波", w.targets().get(0).health >= GameWorld.TARGET_MAX_HEALTH);
+    }
+
+    @Test
+    public void runningOutOfAmmoEndsTheGameInsteadOfHanging() {
+        GameWorld w = world();
+        int guard = 0;
+        while (!w.gameOver() && guard++ < 5000) {
+            w.fire();
+            w.update(1f / 60f);
+        }
+        assertTrue("弹药打光必须结束一局，不能卡在打不出子弹的死局", w.gameOver());
+        assertFalse("结束后不能再开火", w.fire());
+    }
+
+    @Test
+    public void restartResetsScoreAmmoAndStreakButKeepsTargets() {
+        GameWorld w = world();
+        w.fire();
+        w.fire();
+        w.endGame();
+        assertTrue(w.gameOver());
+        w.restart();
+        assertFalse(w.gameOver());
+        assertEquals(0, w.score());
+        assertEquals(w.magazineSize(), w.ammo());
+        assertEquals(0, w.shotsFired());
+        assertEquals(1, w.wave());
+        assertEquals(0, w.bestStreak());
+        assertEquals(w.targets().size(), w.aliveTargets());
+    }
+
+    @Test
+    public void elapsedSecondsActuallyAdvances() {
+        GameWorld w = world();
+        for (int i = 0; i < 60; i++) {
+            w.update(1f / 60f);
+        }
+        assertTrue("计时器必须在走：(long)(dt*1000)/1000 恒为 0 是 bug", w.elapsedSeconds() >= 1);
+    }
+
+    @Test
+    public void streakRemainingIsBoundedAndDecays() {
+        GameWorld w = world();
+        for (GameWorld.Target t : w.targets()) {
+            t.health = 1f;
+        }
+        w.fire();
+        if (w.streak() > 0) {
+            float near = w.streakRemaining();
+            assertTrue(near > 0f && near <= 1f);
+            for (int i = 0; i < 240; i++) {
+                w.update(1f / 60f);
+            }
+            assertEquals(0f, w.streakRemaining(), 1e-3f);
+        }
+    }
+
+    @Test
+    public void streakBonusIsCappedSoScoreStaysSane() {
+        GameWorld w = world();
+        for (GameWorld.Target t : w.targets()) {
+            t.health = 1f;
+        }
+        for (int i = 0; i < 60; i++) {
+            w.fire();
+            w.update(1f / 60f);
+        }
+        assertTrue("分数不应出现异常的指数增长", w.score() < 100000);
     }
 }

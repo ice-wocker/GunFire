@@ -19,6 +19,7 @@ public final class GameWorld {
     private static final float PLAYER_RADIUS = 0.4f;
     private static final float EYE_HEIGHT = 1.68f;
     private static final int MAGAZINE_SIZE = 30;
+    private static final int RESERVE_AMMO = 120;
     private static final float RELOAD_SECONDS = 1.8f;
 
     /** 世界里的静态方块（墙、箱子、地面）。中心 + 半尺寸。 */
@@ -81,15 +82,22 @@ public final class GameWorld {
 
     private int score;
     private int ammo = MAGAZINE_SIZE;
-    private int reserveAmmo = 120;
+    private int reserveAmmo = RESERVE_AMMO;
     private boolean reloading;
     private float reloadTimer;
     private float muzzleFlash;
     private float spreadHeat;
     private int shotsFired;
     private int shotsHit;
-    private long elapsedSeconds;
+    private long elapsedMillis;
     private boolean gameOver;
+    private int wave = 1;
+    private int streak;
+    private int bestStreak;
+    private float streakAge;
+
+    /** 连杀窗口：超过这个间隔没再击杀，连击归零。 */
+    private static final float STREAK_WINDOW_SECONDS = 3.5f;
 
     public GameWorld() {
         this(new Random());
@@ -234,9 +242,18 @@ public final class GameWorld {
             hit.health -= 34f;
             hit.hitFlash = 0.12f;
             shotsHit++;
+            // 打中但没打死也给分：原来只有击杀才有 100 分，
+            // 而目标 3 枪才倒，导致「命中」这件事在玩家侧完全没有反馈。
+            score += 10;
             if (hit.health <= 0 && hit.alive) {
                 hit.alive = false;
-                score += 100;
+                streak++;
+                streakAge = 0f;
+                bestStreak = Math.max(bestStreak, streak);
+                // 连杀加成：2 连 200、3 连 300……最多叠到 600 封顶。
+                // 目的是让"连"本身变成可追求的目标，而不只是多杀几个靶子。
+                int bonus = 100 + Math.min(streak - 1, 5) * 100;
+                score += bonus;
             }
         }
         return true;
@@ -345,7 +362,8 @@ public final class GameWorld {
             return;
         }
         dt = Math.min(dt, 0.05f);
-        elapsedSeconds += (long) (dt * 1000) / 1000;
+        // 原写法 (long)(dt*1000)/1000 对每帧 dt≈0.0167 恒等于 0，计时器从来没走过。
+        elapsedMillis += (long) (dt * 1000f);
 
         muzzleFlash = Math.max(0f, muzzleFlash - dt * 8f);
         spreadHeat = Math.max(0f, spreadHeat - dt * 0.7f);
@@ -368,8 +386,24 @@ public final class GameWorld {
         }
         random.nextFloat(); // 保持随机流推进，保证回放一致性可复现
 
+        // 连杀倒计时：不刷新就会被清零，逼玩家往前压而不是蹲着等。
+        if (streak > 0) {
+            streakAge += dt;
+            if (streakAge > STREAK_WINDOW_SECONDS) {
+                streak = 0;
+                streakAge = 0f;
+            }
+        }
+
         if (targetsCleared()) {
             respawnWave();
+        }
+
+        // 弹匣和备弹都空了 = 这一局结束。
+        // 原来 reserve 耗尽后 reload() 直接 return，玩家会卡在一个
+        // 「点得动但打不出子弹、也没人告诉你结束了」的死局里。
+        if (!gameOver && ammo <= 0 && reserveAmmo <= 0 && !reloading) {
+            endGame();
         }
     }
 
@@ -383,9 +417,13 @@ public final class GameWorld {
     }
 
     private void respawnWave() {
+        wave++;
+        killsThisWave = 0;
         for (Target t : targets) {
             t.alive = true;
-            t.health = TARGET_MAX_HEALTH;
+            // 每波血量 +8，第 6 波起要 4 枪才倒。
+            // 目的是让"第几波"变成一个会走到的数字，而不是无限重复同一局。
+            t.health = TARGET_MAX_HEALTH * (1f + (wave - 1) * 0.08f);
         }
     }
 
@@ -454,7 +492,27 @@ public final class GameWorld {
     }
 
     public long elapsedSeconds() {
-        return elapsedSeconds;
+        return elapsedMillis / 1000;
+    }
+
+    public int wave() {
+        return wave;
+    }
+
+    public int streak() {
+        return streak;
+    }
+
+    public int bestStreak() {
+        return bestStreak;
+    }
+
+    /** 连杀窗口剩余比例，0 表示没在连杀。HUD 用它画一条会缩短的进度条。 */
+    public float streakRemaining() {
+        if (streak == 0) {
+            return 0f;
+        }
+        return clamp(1f - streakAge / STREAK_WINDOW_SECONDS, 0f, 1f);
     }
 
     public boolean gameOver() {
@@ -463,6 +521,34 @@ public final class GameWorld {
 
     public void endGame() {
         gameOver = true;
+    }
+
+    /** 重开一局：场地不变，只把一局的进度归零。 */
+    public void restart() {
+        score = 0;
+        ammo = MAGAZINE_SIZE;
+        reserveAmmo = RESERVE_AMMO;
+        reloading = false;
+        reloadTimer = 0f;
+        shotsFired = 0;
+        shotsHit = 0;
+        elapsedMillis = 0L;
+        wave = 1;
+        streak = 0;
+        bestStreak = 0;
+        streakAge = 0f;
+        killsThisWave = 0;
+        muzzleFlash = 0f;
+        spreadHeat = 0f;
+        camera.recoil = 0f;
+        camera.position = Vec3.of(0, EYE_HEIGHT, 6);
+        camera.yaw = 0f;
+        camera.pitch = 0f;
+        for (Target t : targets) {
+            t.alive = true;
+            t.health = TARGET_MAX_HEALTH;
+        }
+        gameOver = false;
     }
 
     /** 命中率，0~1；没开火时返回 0。 */

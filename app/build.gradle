@@ -1,0 +1,68 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.icewocker.gunfire'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'com.icewocker.gunfire'
+        minSdk 24
+        targetSdk 35
+        versionCode 1
+        versionName '1.0.0'
+    }
+
+    // 演示用签名：仓库内自带，方便 CI 直接产出可安装包，不需要配 secrets。
+    signingConfigs {
+        demo {
+            storeFile file('../keystore/demo.keystore')
+            storePassword 'gunfire'
+            keyAlias 'gunfire'
+            keyPassword 'gunfire'
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.demo
+        }
+        debug {
+            signingConfig signingConfigs.demo
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    lint {
+        abortOnError true
+    }
+}
+
+dependencies {
+    // 只有 AndroidX 框架层，无第三方库。
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+    testImplementation 'junit:junit:4.13.2'
+}
+
+// appcompat 会传递引入 kotlin-stdlib 的多个 jdk7/jdk8 变体，
+// 它们与 1.8+ 的合并版 stdlib 有重复类，R8 会直接失败。
+// 这里统一钉到最新的合并版，让重复变体不再出现在 classpath 上。
+configurations.configureEach {
+    resolutionStrategy {
+        force 'org.jetbrains.kotlin:kotlin-stdlib:1.8.22'
+        eachDependency { details ->
+            if (details.requested.group == 'org.jetbrains.kotlin'
+                    && details.requested.name.startsWith('kotlin-stdlib-jdk')) {
+                details.useTarget 'org.jetbrains.kotlin:kotlin-stdlib:1.8.22'
+            }
+        }
+    }
+}
